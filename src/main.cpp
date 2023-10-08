@@ -20,6 +20,8 @@
 // NTP Timestamp
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include "sensors.h"
+#include <DHT.h>
 
 #define FIRMWARE_VERSION "0.1"
 #define SERVER_NAME "192.168.2.183"
@@ -29,18 +31,23 @@
 #define EEPROM_SIZE 256
 #define MASTER_MODULE_INDEX 0
 
+#define LATITUDE "46.05108"
+#define LONGATUDE "14.50513"
+
+bool Fire = 0;
+
+// DHT dht(DHTPIN, DHTTYPE);
+
 StaticJsonDocument<100> doc;
 String jsonData;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP);
-
 
 // MQTT Broker
 WiFiClient wlanClient;
 PubSubClient mqttClient(wlanClient);
 
 long time_unix;
-
 
 typedef struct
 {
@@ -52,21 +59,21 @@ typedef struct
 	bool _update;
 } air_data;
 
-typedef struct {
-  String id;
-  String name;
-  String place;
-  String masterIP;
+typedef struct
+{
+	String id;
+	String name;
+	String place;
+	String masterIP;
 
 } module_props;
 
-module_props module {
-  id: "unknown",
-  name: "AS-host",
-  place: "unkown",
-  masterIP: "",
+module_props module{
+	id : "unknown",
+	name : "AS-host",
+	place : "unkown",
+	masterIP : "",
 };
-
 
 // Present airData from modules for analysis and for posting/publishing
 air_data modulesAirData[0] = {};
@@ -75,13 +82,12 @@ air_data modulesAirData[0] = {};
 DynamicJsonDocument payload(1024);
 JsonArray airData = payload.createNestedArray("fire");
 
-
 // Intervals
-unsigned long sensorReadingInterval = 5000;
+unsigned long sensorReadingInterval = 60000;
 
 unsigned long sensorReadingPreviousTime = 0;
 
-unsigned long setup_buttonActiveTime = 0;			///
+unsigned long setup_buttonActiveTime = 0;	  ///
 volatile bool setup_interrupt_active = false; ///
 bool setup_active = false;
 
@@ -89,9 +95,7 @@ unsigned long setupModeLedInterval = 700;
 unsigned long setupModeLedPreviousTime = 0;
 bool setupLedIsOn = false;
 
-
 bool exec_wifi_reconnect_flag = false;
-
 
 // Functions
 bool connectToWiFi();
@@ -102,8 +106,8 @@ void callback(char *topic, byte *payload, unsigned int length);
 void setup()
 {
 	// PINS SETUP
-	pinMode(LED_PIN, OUTPUT);
-	digitalWrite(LED_PIN, 0);
+	// pinMode(, OUTPUT);
+	// digitalWrite(LED_PIN, 0);
 
 	// Init Serial
 	Serial.begin(115200);
@@ -117,11 +121,12 @@ void setup()
 
 	// modulesAirData[MASTER_MODULE_INDEX].id = module.name;
 	payload["source"] = "first-module";
-	airData[MASTER_MODULE_INDEX]["latitude"] = "100";
-	airData[MASTER_MODULE_INDEX]["longitude"] = "100";
+	airData[MASTER_MODULE_INDEX]["latitude"] = LATITUDE;
+	airData[MASTER_MODULE_INDEX]["longitude"] = LONGATUDE;
 
 	// Connect to WiFi WPA2
-	if (connectToWiFi()) {
+	if (connectToWiFi())
+	{
 		updateFirmware();
 		connectToBroker();
 	}
@@ -130,190 +135,213 @@ void setup()
 	{
 		digitalWrite(LED_PIN, 1);
 	}
+
+	dht.begin();
+
+	pinMode(LED_PIN, OUTPUT);
+	// pinMode(buzzer, OUTPUT);
+	pinMode(POWER_PIN, OUTPUT);
+	digitalWrite(POWER_PIN, LOW);
+	// configure LED PWM functionalitites
+	ledcSetup(ledChannel, freq, resolution);
+
+	// attach the channel to the GPIO to be controlled
+	ledcAttachPin(buzzer, ledChannel);
+
+	// output a Middle C
+	// ledcWriteTone(ledChannel, 261.626);
+	pinMode(LED_PIN_GREEN, OUTPUT);
+	pinMode(LED_PIN_YELLOW, OUTPUT);
+	pinMode(LED_PIN_RED, OUTPUT);
 }
 
 void loop()
 {
 	// Local Reading
-	if ((millis() - sensorReadingPreviousTime >= sensorReadingInterval) && !setup_active)
+	bool Fire = loop2();
+	if (Fire == true)
 	{
-    // Read sensors
-		Serial.println("Updating air data");
-
-		if(false) return;
-
-		// Get current time
-		timeClient.update();
-		time_unix = timeClient.getEpochTime();
-		airData[MASTER_MODULE_INDEX]["time"] = time_unix;
-		// modules_update[MASTER_MODULE_INDEX] = true;
-
-		sensorReadingPreviousTime = millis();
-
-    
-		if (!setup_active)
+		if ((millis() - sensorReadingPreviousTime >= sensorReadingInterval) && !setup_active)
 		{
-			if (!mqttClient.connected())
-			{
-				connectToBroker();
+
+			//Serial.print("jej Dela");
+			// Read sensors
+			Serial.println("Updating air data");
+			// Serial.println(Fire);
+			if (false)
 				return;
+
+			// Get current time
+			timeClient.update();
+			time_unix = timeClient.getEpochTime();
+			airData[MASTER_MODULE_INDEX]["time"] = time_unix;
+			// modules_update[MASTER_MODULE_INDEX] = true;
+
+			sensorReadingPreviousTime = millis();
+
+			if (!setup_active)
+			{
+				if (!mqttClient.connected())
+				{
+					connectToBroker();
+					return;
+				}
+
+				// Send data to MQTT Broker
+				// modules_update[i] = false;
+				char jsonBuffer[1024];
+				serializeJson(payload, jsonBuffer);
+				mqttClient.publish("fire/new", jsonBuffer);
+
+				Serial.println("Updated module on cloud: ");
 			}
+		}
+	}
 
-      // Send data to MQTT Broker
-			// modules_update[i] = false;
-			char jsonBuffer[1024];
-			serializeJson(payload, jsonBuffer);
-			mqttClient.publish("fire/new", jsonBuffer);
-
-			Serial.print("Updated module on cloud: ");
+		if (exec_wifi_reconnect_flag)
+		{
+			connectToWiFi();
+			updateFirmware();
+			connectToBroker();
+			exec_wifi_reconnect_flag = false;
 		}
 
+		mqttClient.loop(); // Check mqtt topics
+
+		
+		//Serial.print(Fire);
+		//Serial.println(Fire == true);
+
+		// Delay
+		delay(1);
 	}
 
-	
-
-
-	if (exec_wifi_reconnect_flag)
+	bool connectToWiFi()
 	{
-		connectToWiFi();
-		updateFirmware();
-		connectToBroker();
-		exec_wifi_reconnect_flag = false;
-	}
+		if (WiFi.status() == WL_CONNECTED)
+		{
+			return true;
+		}
 
-	mqttClient.loop(); // Check mqtt topics
+		// Read saved WiFi ssid and password
+		// String ssid = module.getString(eeprom_wifi_ssid_addr);
+		// String pass = module.getString(eeprom_wifi_password_addr);
+		String ssid = WIFI_SSID;
+		String pass = WIFI_PASSWORD;
+		Serial.print(ssid);
+		Serial.println("-");
+		Serial.print(pass);
+		Serial.println("-");
 
-	// Delay
-	delay(1);
-}
+		// Connect to WiFi
+		WiFi.mode(WIFI_STA);
+		WiFi.begin(ssid.c_str(), pass.c_str());
+		String hostname = "Maister-module-" + module.id;
+		WiFi.setHostname(hostname.c_str());
 
+		if (WiFi.waitForConnectResult() != WL_CONNECTED)
+		{
+			Serial.println("[ERROR] WiFi unconnected");
+			return false;
+		}
 
-bool connectToWiFi()
-{
-	if (WiFi.status() == WL_CONNECTED)
-	{
+		timeClient.begin(); // For timestamp
+
+		// digitalWrite(LED_PIN, 1);
+
+		Serial.print("[INFO] Connected to WiFi ");
+		Serial.println(WiFi.SSID());
+		Serial.print("IP: ");
+		Serial.println(WiFi.localIP());
+		Serial.print("RSSI: ");
+		Serial.println(WiFi.RSSI());
 		return true;
 	}
 
-	// Read saved WiFi ssid and password
-	// String ssid = module.getString(eeprom_wifi_ssid_addr);
-	// String pass = module.getString(eeprom_wifi_password_addr);
-  String ssid = WIFI_SSID;
-  String pass = WIFI_PASSWORD;
-	Serial.print(ssid);
-	Serial.println("-");
-	Serial.print(pass);
-	Serial.println("-");
-
-	// Connect to WiFi
-	WiFi.mode(WIFI_STA);
-	WiFi.begin(ssid.c_str(), pass.c_str());
-	String hostname = "Maister-module-" + module.id;
-	WiFi.hostname(hostname.c_str());
-
-	if (WiFi.waitForConnectResult() != WL_CONNECTED)
+	// Connect to MQTT broker
+	void connectToBroker()
 	{
-		Serial.println("[ERROR] WiFi unconnected");
-		return false;
+		Serial.println("Connecting to broker");
+		mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+		mqttClient.setCallback(callback);
+		if (mqttClient.connect(module.name.c_str(), MQTT_USERNAME, MQTT_PASSWORD))
+		{
+			// mqttClient.setKeepAlive(sensorReadingInterval / 1000);
+			mqttClient.setKeepAlive(900);
+			Serial.println("[INFO] Connected to MQTT Broker");
+		}
+		else
+		{
+			Serial.print("[ERROR] MQTT Broker connection failed with state: ");
+			Serial.println(mqttClient.state());
+			delay(200);
+		}
+		mqttClient.subscribe("firmware/update/host-module");
 	}
 
-	timeClient.begin(); // For timestamp
-
-	digitalWrite(LED_PIN, 1);
-
-	Serial.print("[INFO] Connected to WiFi ");
-	Serial.println(WiFi.SSID());
-	Serial.print("IP: ");
-	Serial.println(WiFi.localIP());
-	Serial.print("RSSI: ");
-	Serial.println(WiFi.RSSI());
-	return true;
-}
-
-// Connect to MQTT broker
-void connectToBroker()
-{
-	Serial.println("Connecting to broker");
-	mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-	mqttClient.setCallback(callback);
-	if (mqttClient.connect(module.name.c_str(), MQTT_USERNAME, MQTT_PASSWORD))
+	// On MQTT message
+	void callback(char *topic, byte *payload, unsigned int length)
 	{
-		// mqttClient.setKeepAlive(sensorReadingInterval / 1000);
-		mqttClient.setKeepAlive(900);
-		Serial.println("[INFO] Connected to MQTT Broker");
+		Serial.print("Message arrived in topic: ");
+		Serial.println(topic);
+		Serial.print("Message:");
+		for (int i = 0; i < length; i++)
+		{
+			Serial.print((char)payload[i]);
+		}
+		Serial.println();
+		Serial.println("-----------------------");
+
+		// -> Update software
+		if (strcmp(topic, "firmware/update/host-module") == 0 && true)
+		{
+			Serial.println("[INFO] Firmware update available");
+			updateFirmware();
+		}
 	}
-	else
+
+	void update_started()
 	{
-		Serial.print("[ERROR] MQTT Broker connection failed with state: ");
-		Serial.println(mqttClient.state());
-		delay(200);
+		Serial.println("[UPDATE] HTTP update process started");
 	}
-	mqttClient.subscribe("firmware/update/host-module");
-}
 
-// On MQTT message
-void callback(char *topic, byte *payload, unsigned int length)
-{
-	Serial.print("Message arrived in topic: ");
-	Serial.println(topic);
-	Serial.print("Message:");
-	for (int i = 0; i < length; i++)
+	void update_finished()
 	{
-		Serial.print((char)payload[i]);
+		Serial.println("\n[UPDATE] HTTP update process finished");
 	}
-	Serial.println();
-	Serial.println("-----------------------");
 
-  // -> Update software
-	if (strcmp(topic, "firmware/update/host-module") == 0 && true)
+	void update_progress(int cur, int total)
 	{
-		Serial.println("[INFO] Firmware update available");
-		updateFirmware();
+		Serial.print(".");
 	}
-}
 
-void update_started()
-{
-	Serial.println("[UPDATE] HTTP update process started");
-}
+	void update_error(int err)
+	{
+		Serial.printf("[UPDATE ERROR] HTTP update fatal error code %d\n", err);
+	}
 
-void update_finished()
-{
-	Serial.println("\n[UPDATE] HTTP update process finished");
-}
+	void updateFirmware()
+	{
+		Serial.println("[ERROR] OTA firmware update is not supported");
+		// WiFiClient client;
+		// ESPhttpUpdate.setLedPin(LED_PIN, LOW);
+		// ESPhttpUpdate.onStart(update_started);
+		// ESPhttpUpdate.onEnd(update_finished);
+		// ESPhttpUpdate.onProgress(update_progress);
+		// ESPhttpUpdate.onError(update_error);
 
-void update_progress(int cur, int total)
-{
-	Serial.print(".");
-}
+		// t_httpUpdate_return ret = ESPhttpUpdate.update(client, SERVER_NAME, SERVER_PORT, SERVER_UPDATE_PATH, FIRMWARE_VERSION);
 
-void update_error(int err)
-{
-	Serial.printf("[UPDATE ERROR] HTTP update fatal error code %d\n", err);
-}
-
-void updateFirmware()
-{
-  Serial.println("[ERROR] OTA firmware update is not supported");
-	// WiFiClient client;
-	// ESPhttpUpdate.setLedPin(LED_PIN, LOW);
-	// ESPhttpUpdate.onStart(update_started);
-	// ESPhttpUpdate.onEnd(update_finished);
-	// ESPhttpUpdate.onProgress(update_progress);
-	// ESPhttpUpdate.onError(update_error);
-
-	// t_httpUpdate_return ret = ESPhttpUpdate.update(client, SERVER_NAME, SERVER_PORT, SERVER_UPDATE_PATH, FIRMWARE_VERSION);
-
-	// switch (ret)
-	// {
-	// case HTTP_UPDATE_FAILED:
-	// 	Serial.printf("[UPDATE] Firmware update failed (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-	// 	break;
-	// case HTTP_UPDATE_NO_UPDATES:
-	// 	Serial.println("[UPDATE] No firmware updates available");
-	// 	break;
-	// case HTTP_UPDATE_OK:
-	// 	Serial.println("[UPDATE] Firmware update successful");
-	// 	break;
-	// }
-}
+		// switch (ret)
+		// {
+		// case HTTP_UPDATE_FAILED:
+		// 	Serial.printf("[UPDATE] Firmware update failed (%d): %s\n", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+		// 	break;
+		// case HTTP_UPDATE_NO_UPDATES:
+		// 	Serial.println("[UPDATE] No firmware updates available");
+		// 	break;
+		// case HTTP_UPDATE_OK:
+		// 	Serial.println("[UPDATE] Firmware update successful");
+		// 	break;
+		// }
+	}
