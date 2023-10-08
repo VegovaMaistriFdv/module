@@ -104,8 +104,8 @@ bool loop2()
     //If necessary, program can print data from DHT11 about humidity and temperature.
     // Serial.println(F("Humidity: "));
     // Serial.print(h);
-    // Serial.println(F("% "));
-    // Serial.println(F("Temperature: "));
+    Serial.println(F("% "));
+    Serial.println(F("Temperature: "));
     //Serial.print(t);
     //Serial.println(F("°C "));
     return 0;

@@ -31,8 +31,8 @@
 #define EEPROM_SIZE 256
 #define MASTER_MODULE_INDEX 0
 
-#define LATITUDE "46.05108"
-#define LONGATUDE "14.50513"
+#define LATITUDE "46.04897"
+#define LONGATUDE " 14.50329"
 
 bool Fire = 0;
 
@@ -82,7 +82,7 @@ DynamicJsonDocument payload(1024);
 JsonArray airData = payload.createNestedArray("fire");
 
 // Intervals
-unsigned long sensorReadingInterval = 60000;
+unsigned long sensorReadingInterval = 10000;
 
 
 unsigned long sensorReadingPreviousTime = 0;
@@ -116,9 +116,10 @@ void setup()
 	EEPROM.begin(EEPROM_SIZE);
 
 	// modulesAirData[MASTER_MODULE_INDEX].id = module.name;
-	payload["source"] = "first-module";
-	airData[MASTER_MODULE_INDEX]["latitude"] = LATITUDE;
-	airData[MASTER_MODULE_INDEX]["longitude"] = LONGATUDE;
+	payload["source"] = "ESP_32_VEGOVA";
+	airData[MASTER_MODULE_INDEX]["lat"] = LATITUDE;
+	airData[MASTER_MODULE_INDEX]["lng"] = LONGATUDE;
+	airData[MASTER_MODULE_INDEX]["source"] = "ESP_32_12345";
 
 	// Connect to WiFi WPA2
 	if (connectToWiFi())
@@ -153,14 +154,12 @@ void setup()
 
 void loop()
 {
-	// Local Reading
+	// Local Readi
 	bool Fire = loop2();
 	if (Fire == true)
 	{
 		if ((millis() - sensorReadingPreviousTime >= sensorReadingInterval) && !setup_active)
 		{
-
-			//Serial.print("jej Dela");
 			// Read sensors
 			Serial.println("Updating air data");
 			// Serial.println(Fire);
@@ -170,7 +169,7 @@ void loop()
 			// Get current time
 			timeClient.update();
 			time_unix = timeClient.getEpochTime();
-			airData[MASTER_MODULE_INDEX]["time"] = time_unix;
+			//airData[MASTER_MODULE_INDEX]["time"] = time_unix;
 			// modules_update[MASTER_MODULE_INDEX] = true;
 
 			sensorReadingPreviousTime = millis();
