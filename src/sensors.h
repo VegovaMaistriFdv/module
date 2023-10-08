@@ -2,9 +2,11 @@
 #include <DHT.h>
 #include <ESP32Servo.h>
 
+//Defining DHT11 sensor.
 #define DHTPIN 17
 #define DHTTYPE DHT11
 
+//Defining all the parameters in the circuit.
 #define LED_PIN_GREEN 19
 #define LED_PIN_YELLOW 18
 #define LED_PIN_RED 5
@@ -21,6 +23,7 @@ const int freq = 5000;
 const int ledChannel = 0;
 const int resolution = 8;
 
+//Main part of the circuit that returns if there is a fire.
 bool loop2()
 {
     int sensorValue = analogRead(32);
@@ -41,6 +44,7 @@ bool loop2()
     float hif = dht.computeHeatIndex(f, h);
     float hic = dht.computeHeatIndex(t, h, false);
 
+    //Program can be developed to send data about rain at its location with information from water sensor.
     if (value >= 1500)
     {
         // Serial.println(F("Rainning"));
@@ -50,6 +54,8 @@ bool loop2()
         // Serial.println(F("Not rainning"));
     }
 
+    //Program collects data from smoke (potentiometer) and heat sensor and turns on certian LED diode according to the probability of fire.
+    //This exact code is written for DHT11 sensor but you can also use other.
     if (sensorValue >= SMOKE)
     {
 
@@ -95,7 +101,7 @@ bool loop2()
     }
 
     
-
+    //If necessary, program can print data from DHT11 about humidity and temperature.
     // Serial.println(F("Humidity: "));
     // Serial.print(h);
     // Serial.println(F("% "));

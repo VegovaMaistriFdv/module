@@ -36,7 +36,6 @@
 
 bool Fire = 0;
 
-// DHT dht(DHTPIN, DHTTYPE);
 
 StaticJsonDocument<100> doc;
 String jsonData;
@@ -85,6 +84,7 @@ JsonArray airData = payload.createNestedArray("fire");
 // Intervals
 unsigned long sensorReadingInterval = 60000;
 
+
 unsigned long sensorReadingPreviousTime = 0;
 
 unsigned long setup_buttonActiveTime = 0;	  ///
@@ -105,10 +105,6 @@ void callback(char *topic, byte *payload, unsigned int length);
 
 void setup()
 {
-	// PINS SETUP
-	// pinMode(, OUTPUT);
-	// digitalWrite(LED_PIN, 0);
-
 	// Init Serial
 	Serial.begin(115200);
 	Serial.println();
@@ -320,6 +316,7 @@ void loop()
 		Serial.printf("[UPDATE ERROR] HTTP update fatal error code %d\n", err);
 	}
 
+	//OAT frmware update is not supported currently
 	void updateFirmware()
 	{
 		Serial.println("[ERROR] OTA firmware update is not supported");
